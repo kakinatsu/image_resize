@@ -1,14 +1,166 @@
 <!doctype html>
-<html lang="en">
+<html lang="ja">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Image Upload Service</title>
+    <title>画像アップロード</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script defer src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script defer src="/app.js"></script>
   </head>
   <body>
-    <main>
-      <h1>Image Upload Service</h1>
-      <p>The Rust application is running.</p>
-    </main>
+    <div id="app" class="page">
+      <header class="hero panel">
+        <p class="eyebrow">Image Upload Service</p>
+        <h1>画像をアップロード</h1>
+        <p class="hero-text">
+          画像は自動でWebPに変換され、アップロードから12時間後に期限切れになります。
+        </p>
+        <p class="state-chip" aria-live="polite">現在の状態: {{ uiStateLabel }}</p>
+      </header>
+
+      <section class="panel drop-panel" aria-labelledby="drop-title">
+        <h2 id="drop-title">画像を選択</h2>
+        <div
+          class="dropzone"
+          role="button"
+          tabindex="0"
+          :aria-disabled="isUploading"
+          :class="{ dragging: isDragging, disabled: isUploading }"
+          @click="openFilePicker"
+          @keydown.enter.prevent="openFilePicker"
+          @keydown.space.prevent="openFilePicker"
+          @dragover.prevent="onDragOver"
+          @dragleave.prevent="onDragLeave"
+          @drop.prevent="onDrop"
+        >
+          <p class="drop-main">ここに画像をドラッグ&ドロップ</p>
+          <p class="drop-sub">またはファイルを選択</p>
+          <button
+            type="button"
+            class="ghost-btn"
+            :disabled="isUploading"
+            @click.stop="openFilePicker"
+          >
+            ファイルを選択
+          </button>
+          <input
+            ref="fileInput"
+            class="hidden-input"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            :disabled="isUploading"
+            @change="handleFileInput"
+          >
+        </div>
+      </section>
+
+      <section
+        v-if="selectedFile && localPreviewUrl && !uploadResult"
+        class="panel preview-panel"
+        aria-labelledby="preview-title"
+      >
+        <h2 id="preview-title">選択画像プレビュー</h2>
+        <div class="preview-grid">
+          <img :src="localPreviewUrl" alt="選択画像のプレビュー" class="preview-image">
+          <dl class="meta-list">
+            <div class="meta-row">
+              <dt>ファイル名</dt>
+              <dd>{{ selectedFile.name }}</dd>
+            </div>
+            <div class="meta-row">
+              <dt>ファイルサイズ</dt>
+              <dd>{{ formatBytes(selectedFile.size) }}</dd>
+            </div>
+            <div class="meta-row">
+              <dt>形式</dt>
+              <dd>{{ selectedFile.type || "不明" }}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="panel settings-panel" aria-labelledby="settings-title">
+        <h2 id="settings-title">アップロード設定</h2>
+        <div class="settings-grid">
+          <label class="field">
+            <span>最大幅</span>
+            <input
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="4096"
+              step="1"
+              :disabled="isUploading"
+              v-model.trim="maxWidthInput"
+            >
+          </label>
+          <label class="field">
+            <span>最大高さ</span>
+            <input
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="4096"
+              step="1"
+              :disabled="isUploading"
+              v-model.trim="maxHeightInput"
+            >
+          </label>
+        </div>
+        <p class="help-text">入力範囲は 1 から 4096、初期値は 2048 です。</p>
+      </section>
+
+      <section class="panel action-panel" aria-labelledby="action-title">
+        <h2 id="action-title">アップロード実行</h2>
+        <button
+          type="button"
+          class="primary-btn"
+          :disabled="!canUpload"
+          @click="uploadImage"
+        >
+          <span v-if="isUploading" class="spinner" aria-hidden="true"></span>
+          {{ isUploading ? "アップロード中..." : "アップロード" }}
+        </button>
+      </section>
+
+      <section
+        v-if="uploadResult"
+        class="panel result-panel"
+        aria-labelledby="result-title"
+      >
+        <h2 id="result-title">アップロード完了</h2>
+        <div class="url-area">
+          <label for="result-url" class="url-label">画像URL</label>
+          <div class="url-row">
+            <input id="result-url" :value="uploadResult.url" readonly class="url-input">
+            <button type="button" class="copy-btn" @click="copyUrl">
+              {{ copySuccess ? "コピーしました" : "URLをコピー" }}
+            </button>
+          </div>
+        </div>
+        <dl class="result-meta">
+          <div class="meta-row">
+            <dt>有効期限</dt>
+            <dd>{{ formatExpires(uploadResult.expires_at) }}</dd>
+          </div>
+          <div class="meta-row">
+            <dt>保存サイズ</dt>
+            <dd>{{ uploadResult.width }} x {{ uploadResult.height }} / {{ formatBytes(uploadResult.size_bytes) }}</dd>
+          </div>
+        </dl>
+        <img :src="uploadResult.url" alt="アップロード後の画像プレビュー" class="preview-image">
+      </section>
+
+      <section v-if="errorMessage" class="panel error-panel" role="alert" aria-live="assertive">
+        <h2>エラー</h2>
+        <p>{{ errorMessage }}</p>
+        <p v-if="errorCode" class="error-code">コード: {{ errorCode }}</p>
+      </section>
+    </div>
+
+    <noscript>
+      JavaScriptを有効にすると画像アップロードUIを利用できます。
+    </noscript>
   </body>
 </html>
