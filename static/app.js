@@ -136,13 +136,6 @@
           return;
         }
 
-        if (this.maxFileBytes && file.size > this.maxFileBytes) {
-          this.selectedFile = null;
-          this.revokePreviewUrl();
-          this.setError(this.fileTooLargeMessage(), "FILE_TOO_LARGE");
-          return;
-        }
-
         this.selectedFile = file;
         this.revokePreviewUrl();
         this.localPreviewUrl = URL.createObjectURL(file);
