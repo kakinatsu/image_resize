@@ -1,2 +1,2 @@
 CRON_TZ=Asia/Tokyo
-0 12 * * * /usr/bin/flock -n /tmp/image_resize_cleanup.lock /opt/image_resize/run_cleanup.sh >> /var/log/image_resize_cleanup.log 2>&1
+0 12 * * * /usr/bin/flock -n /tmp/image_resize_cleanup.lock /opt/image_resize/run_cleanup.sh >> /opt/image_resize/logs/cleanup.log 2>&1
