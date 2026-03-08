@@ -1304,6 +1304,7 @@ dependencies = [
  "kamadak-exif",
  "rusqlite",
  "serde",
+ "sha2",
  "time",
  "tokio",
  "tower-http",

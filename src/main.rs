@@ -5,12 +5,16 @@ mod error;
 mod fetch;
 mod image_processing;
 mod r2;
+mod ui;
 mod upload;
 
-use std::{env, io, net::SocketAddr, path::PathBuf};
+use std::{env, io, net::SocketAddr, path::PathBuf, sync::Arc};
 
 use axum::{
     Json, Router,
+    body::Body,
+    http::{StatusCode, header},
+    response::{Html, IntoResponse, Response},
     routing::{get, get_service, post},
 };
 use config::Config;
@@ -24,6 +28,9 @@ pub(crate) struct AppState {
     sqlite_path: PathBuf,
     public_base_url: String,
     max_upload_file_bytes: usize,
+    index_html: Arc<str>,
+    app_asset_route: Arc<str>,
+    app_script: Arc<[u8]>,
     r2: r2::R2Client,
 }
 
@@ -79,12 +86,17 @@ async fn run(command: AppCommand) -> Result<(), AppError> {
 }
 
 async fn serve(config: Config, r2: r2::R2Client) -> Result<(), AppError> {
+    let ui_assets = ui::load(&config.static_dir).map_err(AppError::UiAssets)?;
     let state = AppState {
         sqlite_path: config.sqlite_path.clone(),
         public_base_url: config.public_base_url.clone(),
         max_upload_file_bytes: config.upload_max_file_bytes,
+        index_html: Arc::<str>::from(ui_assets.index_html),
+        app_asset_route: Arc::<str>::from(ui_assets.app_asset_route),
+        app_script: Arc::<[u8]>::from(ui_assets.app_script),
         r2,
     };
+    let app_asset_route = state.app_asset_route.to_string();
 
     let app = build_router(state, config.static_dir.clone());
     let listener = tokio::net::TcpListener::bind(config.app_addr)
@@ -101,6 +113,7 @@ async fn serve(config: Config, r2: r2::R2Client) -> Result<(), AppError> {
         "configured upload size limit: {} bytes",
         config.upload_max_file_bytes
     );
+    info!("fingerprinted app asset path: {}", app_asset_route);
 
     axum::serve(listener, app).await.map_err(AppError::Serve)?;
 
@@ -108,10 +121,14 @@ async fn serve(config: Config, r2: r2::R2Client) -> Result<(), AppError> {
 }
 
 fn build_router(state: AppState, static_dir: PathBuf) -> Router {
-    let static_service =
-        get_service(ServeDir::new(static_dir).append_index_html_on_directories(true));
+    let static_service = get_service(ServeDir::new(static_dir));
+    let app_asset_route = state.app_asset_route.to_string();
 
     Router::new()
+        .route("/", get(index))
+        .route("/index.html", get(index))
+        .route("/app.js", get(legacy_app_script))
+        .route(&app_asset_route, get(fingerprinted_app_script))
         .route("/healthz", get(healthz))
         .route("/api/settings", get(settings))
         .route(
@@ -126,6 +143,34 @@ fn build_router(state: AppState, static_dir: PathBuf) -> Router {
 
 async fn healthz() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
+}
+
+async fn index(axum::extract::State(state): axum::extract::State<AppState>) -> impl IntoResponse {
+    (
+        [(header::CACHE_CONTROL, "no-store, no-cache, must-revalidate")],
+        Html(state.index_html.to_string()),
+    )
+}
+
+async fn fingerprinted_app_script(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Response {
+    javascript_response(&state.app_script, "public, max-age=31536000, immutable")
+}
+
+async fn legacy_app_script(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Response {
+    javascript_response(&state.app_script, "no-store, no-cache, must-revalidate")
+}
+
+fn javascript_response(script: &[u8], cache_control: &'static str) -> Response {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "text/javascript; charset=utf-8")
+        .header(header::CACHE_CONTROL, cache_control)
+        .body(Body::from(script.to_vec()))
+        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 async fn settings(
@@ -176,6 +221,7 @@ impl AppCommand {
 enum AppError {
     Config(config::ConfigError),
     Database(db::DbInitError),
+    UiAssets(ui::UiAssetError),
     R2Config(r2::R2ConfigError),
     Cleanup(cleanup::CleanupError),
     Bind { addr: SocketAddr, source: io::Error },
@@ -187,6 +233,7 @@ impl std::fmt::Display for AppError {
         match self {
             Self::Config(err) => write!(f, "{err}"),
             Self::Database(err) => write!(f, "{err}"),
+            Self::UiAssets(err) => write!(f, "{err}"),
             Self::R2Config(err) => write!(f, "{err}"),
             Self::Cleanup(err) => write!(f, "{err}"),
             Self::Bind { addr, source } => write!(f, "failed to bind {addr}: {source}"),
