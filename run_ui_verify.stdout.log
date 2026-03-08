@@ -1,0 +1,2 @@
+[2m2026-03-08T09:31:52.547868Z[0m [33m WARN[0m [2maws_smithy_http_client::client::tls::rustls_provider::build_connector[0m[2m:[0m native root CA certificate loading errors: [Error { context: "failed to open current user certificate store", kind: Os(Os { code: 5, kind: PermissionDenied, message: "アクセスが拒否されました。" }) }]
+[2m2026-03-08T09:31:52.548599Z[0m [33m WARN[0m [2maws_smithy_http_client::client::tls::rustls_provider::build_connector[0m[2m:[0m no native root CA certificates found!
