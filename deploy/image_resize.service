@@ -1,0 +1,19 @@
+[Unit]
+Description=Image Resize Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=image_resize
+Group=image_resize
+WorkingDirectory=/opt/image_resize
+EnvironmentFile=/opt/image_resize/.env
+ExecStart=/opt/image_resize/image_resize
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

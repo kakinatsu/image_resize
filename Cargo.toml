@@ -1,0 +1,19 @@
+[package]
+name = "image_resize"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+aws-credential-types = "1"
+aws-sdk-s3 = "1"
+axum = { version = "0.7", features = ["json", "multipart"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+kamadak-exif = "0.6"
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+time = { version = "0.3", features = ["formatting", "macros"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }
+tower-http = { version = "0.6", features = ["fs"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+ulid = "1"

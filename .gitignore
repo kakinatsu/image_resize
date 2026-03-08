@@ -1,0 +1,8 @@
+target/
+.env
+.dev.env
+data/
+*.db
+*.db-shm
+*.db-wal
+run.*.log
