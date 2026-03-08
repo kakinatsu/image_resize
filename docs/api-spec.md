@@ -29,6 +29,7 @@
 
 | Method | Path        | 説明       |
 | ------ | ----------- | -------- |
+| GET    | /api/settings | 設定値取得    |
 | POST   | /api/images | 画像アップロード |
 | GET    | /i/{id}     | 画像取得     |
 | GET    | /healthz    | ヘルスチェック  |
@@ -93,7 +94,9 @@ multipart/form-data
 
 ## 最大アップロードサイズ
 
-10 MB
+デフォルトは 10 MB とする。
+
+サーバーの環境変数 `UPLOAD_MAX_FILE_BYTES` を設定することで変更できる。
 
 これを超える場合は
 
@@ -197,7 +200,33 @@ Response Body
 
 ---
 
-# 5. 画像取得
+# 5. 設定値取得
+
+## Endpoint
+
+GET /api/settings
+
+---
+
+## Purpose
+
+フロントエンドが現在のアップロード制限値を取得するためのエンドポイント。
+
+---
+
+## Response
+
+200 OK
+
+{
+"upload": {
+"max_file_bytes": 10000000
+}
+}
+
+---
+
+# 6. 画像取得
 
 ## Endpoint
 
@@ -257,7 +286,7 @@ Body
 
 ---
 
-# 6. ヘルスチェック
+# 7. ヘルスチェック
 
 ## Endpoint
 
@@ -281,7 +310,7 @@ GET /healthz
 
 ---
 
-# 7. HTTPヘッダ方針
+# 8. HTTPヘッダ方針
 
 画像レスポンスには以下ヘッダを付与する。
 
@@ -291,7 +320,7 @@ X-Content-Type-Options: nosniff
 
 ---
 
-# 8. 時刻フォーマット
+# 9. 時刻フォーマット
 
 すべての時刻は **RFC3339 UTC** を使用する。
 
@@ -301,7 +330,7 @@ X-Content-Type-Options: nosniff
 
 ---
 
-# 9. ID仕様
+# 10. ID仕様
 
 画像IDは以下の条件を満たす必要がある。
 

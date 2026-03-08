@@ -31,7 +31,7 @@ impl ApiError {
         Self::new(
             StatusCode::PAYLOAD_TOO_LARGE,
             "FILE_TOO_LARGE",
-            "uploaded file exceeds the 10 MB limit",
+            "uploaded file exceeds the configured size limit",
         )
     }
 

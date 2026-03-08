@@ -150,6 +150,7 @@ mod tests {
             public_base_url: "http://127.0.0.1:3000".to_owned(),
             sqlite_path: sqlite_path.clone(),
             static_dir: PathBuf::from("static"),
+            upload_max_file_bytes: 10_000_000,
             r2_endpoint: "https://example-account.r2.cloudflarestorage.com".to_owned(),
             r2_bucket: "example-bucket".to_owned(),
             r2_access_key_id: "example-access-key".to_owned(),

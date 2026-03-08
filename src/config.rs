@@ -1,10 +1,13 @@
 use std::{env, net::SocketAddr, path::PathBuf};
 
+pub const DEFAULT_UPLOAD_MAX_FILE_BYTES: usize = 10_000_000;
+
 pub struct Config {
     pub app_addr: SocketAddr,
     pub public_base_url: String,
     pub sqlite_path: PathBuf,
     pub static_dir: PathBuf,
+    pub upload_max_file_bytes: usize,
     pub r2_endpoint: String,
     pub r2_bucket: String,
     pub r2_access_key_id: String,
@@ -30,6 +33,17 @@ impl Config {
             .map(PathBuf::from)
             .unwrap_or_else(|_| PathBuf::from("static"));
 
+        let upload_max_file_bytes = match env::var("UPLOAD_MAX_FILE_BYTES") {
+            Ok(value) => parse_positive_usize("UPLOAD_MAX_FILE_BYTES", &value)?,
+            Err(env::VarError::NotPresent) => DEFAULT_UPLOAD_MAX_FILE_BYTES,
+            Err(_) => {
+                return Err(ConfigError::InvalidPositiveInteger {
+                    key: "UPLOAD_MAX_FILE_BYTES",
+                    value: "<non-unicode>".to_owned(),
+                });
+            }
+        };
+
         let r2_endpoint = required_var("R2_ENDPOINT")?;
         let r2_bucket = required_var("R2_BUCKET")?;
         let r2_access_key_id = required_var("R2_ACCESS_KEY_ID")?;
@@ -41,6 +55,7 @@ impl Config {
             public_base_url,
             sqlite_path,
             static_dir,
+            upload_max_file_bytes,
             r2_endpoint,
             r2_bucket,
             r2_access_key_id,
@@ -57,10 +72,21 @@ fn required_var(key: &'static str) -> Result<String, ConfigError> {
     }
 }
 
+fn parse_positive_usize(key: &'static str, value: &str) -> Result<usize, ConfigError> {
+    match value.parse::<usize>() {
+        Ok(parsed) if parsed > 0 => Ok(parsed),
+        _ => Err(ConfigError::InvalidPositiveInteger {
+            key,
+            value: value.to_owned(),
+        }),
+    }
+}
+
 #[derive(Debug)]
 pub enum ConfigError {
     InvalidSocketAddr(std::net::AddrParseError),
     MissingEnv(&'static str),
+    InvalidPositiveInteger { key: &'static str, value: String },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -68,8 +94,34 @@ impl std::fmt::Display for ConfigError {
         match self {
             Self::InvalidSocketAddr(err) => write!(f, "invalid APP_ADDR: {err}"),
             Self::MissingEnv(key) => write!(f, "missing required environment variable {key}"),
+            Self::InvalidPositiveInteger { key, value } => {
+                write!(f, "invalid positive integer for {key}: {value}")
+            }
         }
     }
 }
 
 impl std::error::Error for ConfigError {}
+
+#[cfg(test)]
+mod tests {
+    use super::{ConfigError, parse_positive_usize};
+
+    #[test]
+    fn parse_positive_usize_accepts_positive_integers() {
+        let parsed = parse_positive_usize("UPLOAD_MAX_FILE_BYTES", "25000000").unwrap();
+        assert_eq!(parsed, 25_000_000);
+    }
+
+    #[test]
+    fn parse_positive_usize_rejects_zero() {
+        let result = parse_positive_usize("UPLOAD_MAX_FILE_BYTES", "0");
+        assert!(matches!(
+            result,
+            Err(ConfigError::InvalidPositiveInteger {
+                key: "UPLOAD_MAX_FILE_BYTES",
+                ..
+            })
+        ));
+    }
+}

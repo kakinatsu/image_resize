@@ -20,11 +20,10 @@ use crate::{
     image_processing::{self, ImageProcessingError},
 };
 
-pub const MAX_FILE_BYTES: usize = 10_000_000;
-pub const MAX_MULTIPART_BODY_BYTES: usize = 12_000_000;
 const DEFAULT_MAX_DIMENSION: u32 = 2048;
 const MAX_ALLOWED_DIMENSION: u32 = 4096;
 const EXPIRATION_HOURS: i64 = 12;
+const MULTIPART_BODY_OVERHEAD_BYTES: usize = 2_000_000;
 
 #[derive(Debug, Deserialize)]
 pub struct UploadQuery {
@@ -49,7 +48,7 @@ pub async fn upload_image(
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse, ApiError> {
     let options = resolve_query(query)?;
-    let file_bytes = read_uploaded_file(&mut multipart).await?;
+    let file_bytes = read_uploaded_file(&mut multipart, state.max_upload_file_bytes).await?;
 
     let processed = task::spawn_blocking({
         let file_bytes = file_bytes.clone();
@@ -147,14 +146,17 @@ fn resolve_query(
     })
 }
 
-async fn read_uploaded_file(multipart: &mut Multipart) -> Result<Vec<u8>, ApiError> {
+async fn read_uploaded_file(
+    multipart: &mut Multipart,
+    max_file_bytes: usize,
+) -> Result<Vec<u8>, ApiError> {
     while let Some(field) = multipart.next_field().await.map_err(map_multipart_error)? {
         if field.name() != Some("file") {
             continue;
         }
 
         let bytes = field.bytes().await.map_err(map_multipart_error)?;
-        if bytes.len() > MAX_FILE_BYTES {
+        if bytes.len() > max_file_bytes {
             return Err(ApiError::file_too_large());
         }
 
@@ -214,8 +216,12 @@ struct ResolvedUploadQuery {
     max_height: u32,
 }
 
-pub fn upload_body_limit() -> DefaultBodyLimit {
-    DefaultBodyLimit::max(MAX_MULTIPART_BODY_BYTES)
+pub fn upload_body_limit(max_file_bytes: usize) -> DefaultBodyLimit {
+    DefaultBodyLimit::max(multipart_body_limit_bytes(max_file_bytes))
+}
+
+fn multipart_body_limit_bytes(max_file_bytes: usize) -> usize {
+    max_file_bytes.saturating_add(MULTIPART_BODY_OVERHEAD_BYTES)
 }
 
 #[cfg(test)]
@@ -225,7 +231,7 @@ mod tests {
 
     use super::{
         DEFAULT_MAX_DIMENSION, MAX_ALLOWED_DIMENSION, UploadQuery, build_object_key, image_url,
-        resolve_query,
+        multipart_body_limit_bytes, resolve_query,
     };
 
     #[test]
@@ -266,5 +272,10 @@ mod tests {
             image_url("https://example.com/", "01JXYZABCDEF1234567890ABCD"),
             "https://example.com/i/01JXYZABCDEF1234567890ABCD"
         );
+    }
+
+    #[test]
+    fn multipart_body_limit_adds_form_overhead() {
+        assert_eq!(multipart_body_limit_bytes(10_000_000), 12_000_000);
     }
 }

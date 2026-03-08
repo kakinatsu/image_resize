@@ -23,6 +23,7 @@ use tracing::{error, info};
 pub(crate) struct AppState {
     sqlite_path: PathBuf,
     public_base_url: String,
+    max_upload_file_bytes: usize,
     r2: r2::R2Client,
 }
 
@@ -81,6 +82,7 @@ async fn serve(config: Config, r2: r2::R2Client) -> Result<(), AppError> {
     let state = AppState {
         sqlite_path: config.sqlite_path.clone(),
         public_base_url: config.public_base_url.clone(),
+        max_upload_file_bytes: config.upload_max_file_bytes,
         r2,
     };
 
@@ -95,6 +97,10 @@ async fn serve(config: Config, r2: r2::R2Client) -> Result<(), AppError> {
     info!("listening on http://{}", config.app_addr);
     info!("serving static files from {}", config.static_dir.display());
     info!("using sqlite database {}", config.sqlite_path.display());
+    info!(
+        "configured upload size limit: {} bytes",
+        config.upload_max_file_bytes
+    );
 
     axum::serve(listener, app).await.map_err(AppError::Serve)?;
 
@@ -107,9 +113,11 @@ fn build_router(state: AppState, static_dir: PathBuf) -> Router {
 
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/api/settings", get(settings))
         .route(
             "/api/images",
-            post(upload::upload_image).layer(upload::upload_body_limit()),
+            post(upload::upload_image)
+                .layer(upload::upload_body_limit(state.max_upload_file_bytes)),
         )
         .route("/i/:id", get(fetch::get_image))
         .fallback_service(static_service)
@@ -120,9 +128,29 @@ async fn healthz() -> Json<HealthResponse> {
     Json(HealthResponse { status: "ok" })
 }
 
+async fn settings(
+    axum::extract::State(state): axum::extract::State<AppState>,
+) -> Json<SettingsResponse> {
+    Json(SettingsResponse {
+        upload: UploadSettingsResponse {
+            max_file_bytes: state.max_upload_file_bytes,
+        },
+    })
+}
+
 #[derive(Serialize)]
 struct HealthResponse {
     status: &'static str,
+}
+
+#[derive(Serialize)]
+struct SettingsResponse {
+    upload: UploadSettingsResponse,
+}
+
+#[derive(Serialize)]
+struct UploadSettingsResponse {
+    max_file_bytes: usize,
 }
 
 #[derive(Clone, Copy, Debug)]

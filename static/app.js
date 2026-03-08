@@ -1,14 +1,12 @@
 (() => {
   const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
   const ACCEPTED_EXTENSIONS = [".jpg", ".jpeg", ".png", ".webp"];
-  const MAX_FILE_BYTES = 10_000_000;
   const MIN_DIMENSION = 1;
   const MAX_DIMENSION = 4096;
 
   const ERROR_MESSAGE_BY_CODE = {
     INVALID_PARAMETER: "入力内容に誤りがあります。最大幅・最大高さを確認してください。",
     MISSING_FILE: "画像ファイルを選択してください。",
-    FILE_TOO_LARGE: "ファイルサイズが上限（10MB）を超えています。",
     UNSUPPORTED_MEDIA_TYPE: "対応していない画像形式です。JPEG / PNG / WebP を選択してください。",
     INVALID_IMAGE: "画像の読み込みに失敗しました。別の画像でお試しください。",
     INTERNAL_ERROR: "アップロードに失敗しました。時間をおいて再度お試しください。",
@@ -26,6 +24,7 @@
         isDragging: false,
         isUploading: false,
         uploadResult: null,
+        maxFileBytes: null,
         errorMessage: "",
         errorCode: "",
         copySuccess: false,
@@ -55,8 +54,36 @@
 
         return "未選択";
       },
+      uploadLimitText() {
+        if (!this.maxFileBytes) {
+          return "画像サイズ上限はサーバーの環境設定に従います。";
+        }
+
+        return `画像サイズ上限は ${this.formatUploadLimit(this.maxFileBytes)} です。サーバーの環境設定で変更できます。`;
+      },
     },
     methods: {
+      async loadSettings() {
+        try {
+          const response = await fetch("/api/settings", {
+            headers: {
+              Accept: "application/json",
+            },
+          });
+
+          if (!response.ok) {
+            return;
+          }
+
+          const payload = await response.json().catch(() => null);
+          const maxFileBytes = payload?.upload?.max_file_bytes;
+          if (Number.isFinite(maxFileBytes) && maxFileBytes > 0) {
+            this.maxFileBytes = maxFileBytes;
+          }
+        } catch {
+          this.maxFileBytes = null;
+        }
+      },
       openFilePicker() {
         if (this.isUploading) {
           return;
@@ -109,10 +136,10 @@
           return;
         }
 
-        if (file.size > MAX_FILE_BYTES) {
+        if (this.maxFileBytes && file.size > this.maxFileBytes) {
           this.selectedFile = null;
           this.revokePreviewUrl();
-          this.setError("ファイルサイズが上限（10MB）を超えています。", "FILE_TOO_LARGE");
+          this.setError(this.fileTooLargeMessage(), "FILE_TOO_LARGE");
           return;
         }
 
@@ -200,17 +227,17 @@
       },
       resolveApiError(payload, statusCode) {
         const code = payload?.error?.code;
+        if (code === "FILE_TOO_LARGE" || statusCode === 413) {
+          return {
+            message: this.fileTooLargeMessage(),
+            code: code || "FILE_TOO_LARGE",
+          };
+        }
+
         if (code && ERROR_MESSAGE_BY_CODE[code]) {
           return {
             message: ERROR_MESSAGE_BY_CODE[code],
             code,
-          };
-        }
-
-        if (statusCode === 413) {
-          return {
-            message: "ファイルサイズが上限（10MB）を超えています。",
-            code: code || "FILE_TOO_LARGE",
           };
         }
 
@@ -290,6 +317,13 @@
           this.copyResetTimer = null;
         }, 1600);
       },
+      fileTooLargeMessage() {
+        if (!this.maxFileBytes) {
+          return "ファイルサイズが設定上限を超えています。";
+        }
+
+        return `ファイルサイズが上限（${this.formatUploadLimit(this.maxFileBytes)}）を超えています。`;
+      },
       revokePreviewUrl() {
         if (this.localPreviewUrl) {
           URL.revokeObjectURL(this.localPreviewUrl);
@@ -311,6 +345,25 @@
 
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
       },
+      formatUploadLimit(bytes) {
+        if (!Number.isFinite(bytes) || bytes <= 0) {
+          return "不明";
+        }
+
+        if (bytes >= 1000 * 1000) {
+          return `${this.formatUploadLimitNumber(bytes / (1000 * 1000))}MB`;
+        }
+
+        if (bytes >= 1000) {
+          return `${this.formatUploadLimitNumber(bytes / 1000)}KB`;
+        }
+
+        return `${bytes}B`;
+      },
+      formatUploadLimitNumber(value) {
+        const digits = value >= 10 ? 0 : 1;
+        return value.toFixed(digits).replace(/\.0$/, "");
+      },
       formatExpires(value) {
         const date = new Date(value);
         if (Number.isNaN(date.getTime())) {
@@ -328,6 +381,9 @@
           hour12: false,
         });
       },
+    },
+    mounted() {
+      this.loadSettings();
     },
     beforeUnmount() {
       this.revokePreviewUrl();
